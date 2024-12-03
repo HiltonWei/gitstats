@@ -1,5 +1,12 @@
 >Fork至hoxu/gitstats
 
+## 更改 2024.12.3
+1. 适配Windows下命令行,替换 'wc -l'、'grep -v ^commit'
+2. 提交者名字 支持中文
+3. 修正 多目录时只保留了最后一个目录信息changes_by_date_by_author stamp -> author -> {lines_added:0,commits:0}
+4. 修正 changes_by_date_by_author[stamp][author]['lines_added'] 算法累加错误
+5. 新增 按作者统计阶段+lines的详情
+
 ## 更改
 修改并适配了Python3
 1. 修改print -> print()
