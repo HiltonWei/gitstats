@@ -13,6 +13,7 @@ import subprocess
 import sys
 import time
 import zlib
+import chardet #编码检测
 
 if sys.version_info < (2, 6):  # 版本检查
     print("Python 2.6 or higher is required for gitstats", file=sys.stderr)
@@ -71,6 +72,19 @@ def getpipeoutput(cmds, quiet=False):  # 获取命令执行结果
             print('\r'),
         print('[%.5f] >> %s' % (end - start, ' | '.join(cmds)))
     exectime_external += (end - start)
+
+    try:
+        output = output.decode().rstrip('\n')
+        return output
+    except UnicodeDecodeError:
+        print("UnicodeDecodeError 解码错误")
+        detected_encoding = chardet.detect(output)['encoding']
+        if detected_encoding:
+            try:
+                decoded_text = output.decode(detected_encoding)
+                return decoded_text.rstrip('\n')
+            except UnicodeDecodeError:
+                print("无法使用检测到的编码进行解码")
     return output.decode().rstrip('\n')
 
 
@@ -146,7 +160,11 @@ def getnumoflinesinblob(ext_blob):
 	Get number of lines in blob
 	"""
     ext, blob_id = ext_blob
-    count = len(getpipeoutput(['git cat-file blob %s' % blob_id]).split('\n'))
+    if ext not in ('c', 'h', 'cpp', 'hpp', 'py', 'java', 'js', 'css', 'html', 'htm', 'txt', 'md', 'xml', 'json', 'yml', 'yaml'):
+        return (ext, blob_id, 0)
+
+    cmd1 = 'git cat-file blob %s' % blob_id
+    count = len(getpipeoutput([cmd1]).split('\n'))
     return (ext, blob_id, count)
 
 
@@ -209,6 +227,9 @@ class DataCollector:
         self.extensions = {}  # extension -> files, lines
 
         # line statistics
+        # outputs:
+        #  N files changed, N insertions (+), N deletions(-)
+        # <stamp> <author>
         self.changes_by_date = {}  # stamp -> { files, ins, del }
 
         # Per-author statistics
@@ -567,11 +588,7 @@ class GitDataCollector(DataCollector):
             self.cache['lines_in_blob'][blob_id] = linecount
             self.extensions[ext]['lines'] += self.cache['lines_in_blob'][blob_id]
 
-        # line statistics
-        # outputs:
-        #  N files changed, N insertions (+), N deletions(-)
-        # <stamp> <author>
-        self.changes_by_date = {}  # stamp -> { files, ins, del }
+        
         # computation of lines of code by date is better done
         # on a linear history.
         extra = ''
@@ -1600,16 +1617,25 @@ class GitStats:
         data = GitDataCollector()
         data.loadCache(cachefile)
 
-        for gitpath in args[0:-1]:
-            print('Git path: %s' % gitpath)
+        for argpath in args[0:-1]:
+            for gitpath, dirs, files in os.walk(argpath):
+                if 'repo' == gitpath[gitpath.rfind('\\')+1:]:
+                    continue
+                if '.git' in dirs:
+                    dirs[:] = []  # 忽略.git目录的子目录
 
-            prevdir = os.getcwd()
-            os.chdir(gitpath)
+                    print('Git path: %s' % gitpath)
 
-            print('Collecting data...')
-            data.collect(gitpath)
+                    prevdir = os.getcwd()
+                    os.chdir(gitpath)
+                    project = '【{}】'.format(gitpath[gitpath.rfind('\\')+1:])
+                    print('[%s] Collecting data...' % project)
+                    data.collect(gitpath)
 
-            os.chdir(prevdir)
+                    os.chdir(prevdir)
+                for name in dirs:
+                    if name in ['.vs', 'debug', 'release']:
+                        dirs[:] = []#忽略某些目录下的子目录
 
         print('Refining data...')
         data.saveCache(cachefile)
